@@ -1,7 +1,5 @@
 # ChatCLR2024 Challenge Task 2: Target Speaker Lipreading (Baseline)
 
-
-
 ## General Model Training
 
 - **Lexicon and data directory**
@@ -22,7 +20,7 @@
 
 ## Target Speaker Model Training
 
-Building upon a pretrained General Model, we employ a subset of the target speaker's data to perform finetuning, deriving a Target Speaker Model. The finetuning process adheres to the training steps outlined for the DNN-HMM framework. When the evaluation set is unavailable, the development dataset is partitioned in a 7:3 ratio. The larger portion is allocated for finetuning purposes, whereas the smaller segment is reserved for testing. This division is explicitly documented in data.
+Building upon a pretrained General Model, we employ a subset of the target speaker's data to perform finetuning, deriving a Target Speaker Model. The finetuning process adheres to the training steps outlined for the DNN-HMM framework. When the evaluation set is unavailable, the development dataset is partitioned in a 7:3 ratio. The larger portion is allocated for finetuning purposes, whereas the smaller segment is reserved for testing. This division is explicitly documented in [data](./data).
 
 
 ## Results
@@ -30,6 +28,7 @@ Building upon a pretrained General Model, we employ a subset of the target speak
 - **Development set**
 
 | SpeakerID           | S026  | S138  | S139  | S140  | S286  | S287  | S288  | S289  | S393  | S394  | S426  | S427  |
+|         -           |   -   |   -   |   -   |   -   |   -   |   -   |   -   |   -   |   -   |   -   |   -   |   -   |
 | General Model       | 97.85 | 95.96 | 97.08 | 96.90 | 98.08 | 95.31 | 96.95 | 96.64 | 95.87 | 97.07 | 97.01 | 96.27 |
 | Target Speaker Model| | | | | | | | | | | | |
 - **Evaluation set**
