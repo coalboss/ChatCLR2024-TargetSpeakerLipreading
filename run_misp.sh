@@ -34,40 +34,13 @@ stage=$1
 
 # path settings
 
-enhancement=gss   # gss or wpe
-beamformit_path=/yrfs2/cv1/hangchen2/code/se_misp/BeamformIt-master
 python_path=/home/cv1/hangchen2/anaconda3/envs/py37/bin/
 misp2021_corpus=released_data/misp2021_avsr/
+chatclr2024_corpus=released_data/chatclr2024_lipreading/
 #enhancement_dir=${misp2021_corpus}_${enhancement}
 dict_dir=data/local/dict
 data_roi=data/local/roi
 device=0,1,2,3
-
-##########################################################################
-# wpe+beamformit or wpe+gss
-##########################################################################
-
-#if [ $stage -le -2 ]; then
-#  for type in Far Middle ; do
-#    local/enhancement.sh --stage 1 --python_path $python_path --beamformit_path $beamformit_path --enhancement $enhancement --type $type \
-#      /yrfs2/cv1/hangchen2/data/misp2021/audio/dev/far_correct /yrfs2/cv1/hangchen2/data/misp2021/audio/dev/far_correct_wpe_beamformit  || exit 1;
-#    done
-#fi
-
-# use nara-wpe and beamformit or gss to enhance multichannel misp data
-# notice: if you use beamformit, make sure you install nara-wpe and beamformit and you need to compile BeamformIt with the kaldi script install_beamformit.sh
-# If you use gss, make sure you have installed pb_chime5
-if [ $stage -le -1 ]; then
-  for type in far middle ; do
-    for x in dev train addition ; do
-      if [[ ! -f ${enhancement_dir}/audio/$x.done ]]; then
-        local/enhancement.sh --stage 0 --python_path $python_path --beamformit_path $beamformit_path --enhancement $enhancement --type $type \
-          $misp2021_corpus/${x}_${type}_audio $misp2021_corpus/${x}_${type}_audio_${enhancement}  || exit 1;
-        touch $misp2021_corpus/${x}_${type}_audio_${enhancement}/$x.done
-      fi
-    done
-  done
-fi
 
 ###########################################################################
 # prepare dict
@@ -83,14 +56,22 @@ fi
 ###########################################################################
 
 if [ $stage -le 1 ]; then
-  # awk '{print $1}' $dict_dir/lexicon.txt | sort | uniq | awk '{print $1,99}'> $dict_dir/word_seg_vocab.txt
-  for x in addition eval dev train; do
-    ${python_path}python local/prepare_data.py -nj 1 feature/misp2021_avsr/${x}_far_audio_${enhancement}/wav/'*.wav' \
-      released_data/misp2021_avsr/${x}_near_transcription/TextGrid/'*.TextGrid' data/${x}_far_audio_${enhancement}|| exit 1;
+  awk '{print $1}' $dict_dir/lexicon.txt | sort | uniq | awk '{print $1,99}'> $dict_dir/word_seg_vocab.txt
+  for x in dev train; do
+    ${python_path}python local/prepare_data.py -nj 1 feature/misp2021_avsr/${x}_near_audio/wav/'*.wav' \
+      released_data/misp2021_avsr/${x}_near_transcription/TextGrid/'*.TextGrid' data/${x}_near_audio|| exit 1;
     # spk2utt
-    utils/utt2spk_to_spk2utt.pl data/${x}_far_audio_${enhancement}/utt2spk | sort -k 1 | uniq > data/${x}_far_audio_${enhancement}/spk2utt
+    utils/utt2spk_to_spk2utt.pl data/${x}_near_audio/utt2spk | sort -k 1 | uniq > data/${x}_near_audio/spk2utt
     echo "word segmentation"
-    ${python_path}python local/word_segmentation.py $dict_dir/word_seg_vocab.txt data/${x}_far_audio_${enhancement}/text_sentence > data/${x}_far_audio_${enhancement}/text
+    ${python_path}python local/word_segmentation.py $dict_dir/word_seg_vocab.txt data/${x}_near_audio/text_sentence > data/${x}_near_audio/text
+  
+  for x in in eval dev train; do
+    ${python_path}python local/prepare_data.py -nj 1 feature/misp2021_avsr/${x}_far_video/mp4/'*.wav' \
+      released_data/misp2021_avsr/${x}_near_transcription/TextGrid/'*.TextGrid' data/${x}_far_lip|| exit 1;
+    # spk2utt
+    utils/utt2spk_to_spk2utt.pl data/${x}_far_lip/utt2spk | sort -k 1 | uniq > data/${x}_far_lip/spk2utt
+    echo "word segmentation"
+    ${python_path}python local/word_segmentation.py $dict_dir/word_seg_vocab.txt data/${x}_far_lip/text_sentence > data/${x}_far_lip/text
   done
 fi
 
@@ -122,13 +103,13 @@ mkdir -p exp
 if [ $stage -le 5 ]; then
   mfccdir=mfcc
   # eval_far dev_far train_far eval_near dev_near train_near
-  for x in addition_far eval_far dev_far train_far; do
-    utils/fix_data_dir.sh data/${x}_audio_${enhancement}
-    steps/make_mfcc_pitch.sh --cmd "$train_cmd" --nj $nj data/${x}_audio_${enhancement} feature/misp2021_avsr/${x}_mfcc_pitch_kaldi_${enhancement}/log \
-      feature/misp2021_avsr/${x}_mfcc_pitch_kaldi_${enhancement}/ark
-    steps/compute_cmvn_stats.sh data/${x}_audio_${enhancement} feature/misp2021_avsr/${x}_mfcc_pitch_kaldi_${enhancement}/log \
-      feature/misp2021_avsr/${x}_mfcc_pitch_kaldi_${enhancement}/ark
-    utils/fix_data_dir.sh data/${x}_audio_${enhancement}
+  for x in dev_near train_near; do
+    utils/fix_data_dir.sh data/${x}_audio
+    steps/make_mfcc_pitch.sh --cmd "$train_cmd" --nj $nj data/${x}_audio feature/${x}_mfcc_pitch_kaldi/log \
+      feature/misp2021_avsr/${x}_mfcc_pitch_kaldi/ark
+    steps/compute_cmvn_stats.sh data/${x}_audio feature/misp2021_avsr/${x}_mfcc_pitch_kaldi/log \
+      feature/misp2021_avsr/${x}_mfcc_pitch_kaldi/ark
+    utils/fix_data_dir.sh data/${x}_audio
   done
   # for x in train ; do
   #   cp data/${x}_far_audio/utt2spk data/${x}_near_audio
@@ -143,13 +124,6 @@ fi
 ###########################################################################
 # mono phone train
 ###########################################################################
-if [ $stage -le 6 ]; then
-  for x in middle far; do
-    steps/train_mono.sh --boost-silence $boost_sil --nj $nj --cmd "$train_cmd" data/train_${x}_audio_${enhancement} data/lang exp/mono_${x}_audio_${enhancement} || exit 1;
-    utils/mkgraph.sh data/lang_test exp/mono_${x}_audio_${enhancement} exp/mono_${x}_audio_${enhancement}/graph || exit 1;
-    # steps/decode.sh --cmd "$decode_cmd" --config conf/decode.conf --nj $nj exp/mono/graph data/dev_far exp/mono/decode_dev_far || exit 1;
-  done
-fi
 
 if [ $stage -le 7 ]; then
   steps/train_mono.sh --boost-silence $boost_sil --nj $nj --cmd "$train_cmd" data/train_near_audio data/lang exp/mono_near_audio || exit 1;
@@ -160,24 +134,6 @@ fi
 ###########################################################################
 # tr1 delta+delta-delta
 ###########################################################################
-if [ $stage -le 8 ]; then
-  for x in middle far; do
-    # alignment
-    steps/align_si.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_${x}_audio_${enhancement} data/lang \
-      exp/mono_${x}_audio_${enhancement} exp/mono_${x}_audio_${enhancement}_ali || exit 1;
-    # training
-    steps/train_deltas.sh --boost-silence $boost_sil --cmd "$train_cmd" $numLeavesTri1 $numGaussTri1 data/train_${x}_audio_${enhancement} data/lang \
-      exp/mono_${x}_audio_${enhancement}_ali exp/tri1_${x}_audio_${enhancement} || exit 1;
-    # make graph
-    utils/mkgraph.sh data/lang_test exp/tri1_${x}_audio_${enhancement} exp/tri1_${x}_audio_${enhancement}/graph || exit 1;
-  done
-#   # decoding
-#   if [ ! -f exp/tri1/tri1.decode.done ]; then
-#     steps/decode.sh --cmd "$decode_cmd" --config conf/decode.conf --nj ${dev_nj} exp/tri1/graph data/dev_far exp/tri1/decode_dev_far || exit 1;
-#     touch exp/tri1/tri1.decode.done
-#   fi
-fi
-
 if [ $stage -le 9 ]; then
   # alignment
   steps/align_si.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_near_audio data/lang \
@@ -197,24 +153,6 @@ fi
 ###########################################################################
 # tri2 all lda+mllt
 ###########################################################################
-if [ $stage -le 10 ]; then
-  for x in middle far; do
-    # alignment
-    steps/align_si.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_${x}_audio_${enhancement} data/lang \
-      exp/tri1_${x}_audio_${enhancement} exp/tri1_${x}_audio_${enhancement}_ali || exit 1;
-    # training
-    steps/train_lda_mllt.sh --boost-silence $boost_sil --cmd "$train_cmd" $numLeavesMLLT $numGaussMLLT data/train_${x}_audio_${enhancement} data/lang \
-      exp/tri1_${x}_audio_${enhancement}_ali exp/tri2_${x}_audio_${enhancement} || exit 1;
-    # make graph
-    utils/mkgraph.sh data/lang_test exp/tri2_${x}_audio_${enhancement} exp/tri2_${x}_audio_${enhancement}/graph || exit 1;
-  done
-#   # decoding
-#   if [ ! -f exp/tri3/tri3.decode.done ]; then
-#     steps/decode.sh --cmd "$decode_cmd" --config conf/decode.conf --nj ${dev_nj} exp/tri3/graph data/dev_far exp/tri3/decode_dev_far || exit 1;
-#     touch exp/tri3/tri3.decode.done
-#   fi
-fi
-
 if [ $stage -le 11 ]; then
   # alignment
   steps/align_si.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_near_audio data/lang \
