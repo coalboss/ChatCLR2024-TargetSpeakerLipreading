@@ -173,52 +173,6 @@ fi
 ###########################################################################
 # tri3 all sat
 ###########################################################################
-if [ $stage -le 12 ]; then
-   for x in middle far; do
-     # alignment
-     steps/align_fmllr.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_${x}_audio_${enhancement} data/lang \
-       exp/tri2_${x}_audio_${enhancement} exp/tri2_${x}_audio_${enhancement}_ali || exit 1;
-     # training
-     steps/train_sat.sh --boost-silence $boost_sil --cmd "$train_cmd" $numLeavesSAT $numGaussSAT data/train_${x}_audio_${enhancement} data/lang \
-       exp/tri2_${x}_audio_${enhancement}_ali exp/tri3_${x}_audio_${enhancement} || exit 1;
-     # make graph
-     utils/mkgraph.sh data/lang_test exp/tri3_${x}_audio_${enhancement} exp/tri3_${x}_audio_${enhancement}/graph || exit 1;
-
-  # alignment
-     steps/align_fmllr.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_${x}_audio data/lang \
-       exp/tri3_${x}_audio exp/tri3_${x}_audio_ali || exit 1;
-     $train_cmd JOB=1:$nj exp/tri3_${x}_audio_ali/log/align2pdf_id.JOB.log \
-       ali-to-pdf exp/tri3_${x}_audio_ali/final.mdl "ark:gunzip -c exp/tri3_${x}_audio_ali/ali.JOB.gz|" \
-       "ark,scp:exp/tri3_${x}_audio_ali/pdf.JOB.ark,exp/tri3_${x}_audio_ali/pdf.JOB.scp"
-     for n in $(seq $nj); do
-       cat exp/tri3_${x}_audio_ali/pdf.$n.scp || exit 1;
-     done > data/train_${x}_audio/pdf_from_tri3_${x}_audio_ali.scp || exit 1
-     ${python_path}python tool/pdf_ark2pt.py -nj $nj data/train_${x}_audio/pdf_from_tri3_${x}_audio_ali.scp \
-       0.02 0.01 feature/misp2021_avsr/train_${x}_tri3_ali/pt
-   done
-  # alignment 
-  for x in addition eval dev train ; do
-    for y in middle far ; do
-      ali_dir=exp/tri3_${y}_audio_${enhancement}_ali_${x}_${y}_audio_${enhancement}
-      steps/align_fmllr.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/${x}_${y}_audio_${enhancement} data/lang \
-        exp/tri3_${y}_audio_${enhancement} $ali_dir || exit 1;
-      # output_dir=feature/misp2021_avsr/${x}_${y}_tri3_ali/pt
-      # mkdir -p ${output_dir}
-      # num_pdf=$(hmm-info $ali_dir/final.mdl | awk '/pdfs/{print $4}')
-      # echo $num_pdf > $output_dir/../num_pdf
-      # labels_tr_pdf="ark:ali-to-pdf $ali_dir/final.mdl \"ark:gunzip -c $ali_dir/ali.*.gz |\" ark:- |"
-      # analyze-counts --verbose=1 --binary=false --counts-dim=$num_pdf "$labels_tr_pdf" $output_dir/../ali_train_pdf.counts
-      tool/format_ali.sh --python_path ${python_path} --nj ${nj} --cmd ${train_cmd} --frame_dur 0.02 --frame_shift 0.01 \
-        exp/tri3_${y}_audio_${enhancement}_ali_${x}_${y}_audio_${enhancement} feature/misp2021_avsr/tri3_${y}_audio_${enhancement}_ali_${x}_${y}_audio_${enhancement}/pt || exit 1;
-    done
-  done
-  #   # decoding
-  #   if [ ! -f exp/tri4/tri4.decode.done ]; then
-  #     steps/decode_fmllr.sh --cmd "$decode_cmd" --config conf/decode.conf --nj ${dev_nj} exp/tri4/graph data/dev_far exp/tri4/decode_dev_far || exit 1;
-  #     touch exp/tri4/tri4.decode.done
-  #   fi
-fi
-
 if [ $stage -le 13 ]; then
   # # alignment
    steps/align_fmllr.sh --boost-silence $boost_sil --cmd "$train_cmd" --nj $nj data/train_near_audio data/lang \
@@ -254,35 +208,9 @@ if [ $stage -le 13 ]; then
 fi
 
 if [ $stage -le 14 ]; then
-  for x in addition eval dev train ; do
-    for y in middle far ; do
-      data_dir=data/${x}_${y}_audio_${enhancement}
-      store_dir=feature/misp2021_avsr/${x}_${y}_audio_${enhancement}_segment/pt
-      echo "============================================================"
-      echo "segment $data_dir, store in $store_dir"
-      ${python_path}python tool/segment_wav_to_pt.py -nj $nj $data_dir $store_dir
-      cat $store_dir/segment.log
+  for x in eval dev train ; do
       ${python_path}python local/index_file2json.py
-    done
   done
-fi
-
-#if [ $stage -le 15 ]; then
-#  for x in dev ; do
-#    for y in far ; do
-#      data_dir=data/${x}_${y}_video
-#      # store_dir=/yrfs2/cv1/hangchen2/code/misp2021_avsr/feature/misp2021_avsr/${x}_${y}_video_segment/pt
-#      store_dir=feature/misp2021_avsr/${x}_${y}_video_segment/pt
-#      echo "============================================================"
-#      echo "segment $data_dir, store in $store_dir"
-#      ${python_path}python tool/segment_mp4_to_pt.py -nj 10 $data_dir $store_dir || exit 1
-#      cat $store_dir/segment.log
-#    done
-#  done
-#fi
-
-if [ $stage -le 16 ]; then
-  CUDA_VISIBLE_DEVICES=${divice} ${python_path}python local/feature_cmvn.py 0
 fi
 
 if [ $stage -le 17 ]; then
@@ -291,8 +219,8 @@ if [ $stage -le 17 ]; then
 fi
 
 if [ $stage -le 18 ]; then
-  for x in addition; do
-    for y in far middle; do
+  for x in eval dev train; do
+    for y in far; do
       for roi_type in head lip; do
         if [[ $y = far ]]; then
           need_speaker=true
